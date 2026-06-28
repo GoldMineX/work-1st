@@ -1,87 +1,69 @@
 import streamlit as st
-from groq import Groq
+import google.generativeai as genai
 import os
-import base64
 from PyPDF2 import PdfReader
 
-st.set_page_config(page_title="Vision Agent Console", layout="wide")
+st.set_page_config(page_title="Ultra Agent Console", layout="wide")
 
-# Helper function to convert image to Base64
-def encode_image(image_file):
-    return base64.b64encode(image_file.read()).decode('utf-8')
-
-st.title("👁️ Vision & Document Agent")
+st.title("🚀 High-Performance Agent (Gemini 1.5)")
 
 # --- API KEY ---
-api_key = os.environ.get("GROQ_API_KEY")
+# Change the Env Variable name in Render to GEMINI_API_KEY
+api_key = os.environ.get("GEMINI_API_KEY")
 if not api_key:
-    api_key = st.sidebar.text_input("Enter Groq API Key", type="password")
+    api_key = st.sidebar.text_input("Enter Gemini API Key", type="password")
 
 # --- SIDEBAR: FILE UPLOADER ---
-st.sidebar.title("📁 Upload Files")
+st.sidebar.title("📁 Multimodal Uploads")
 uploaded_file = st.sidebar.file_uploader(
-    "Upload Image or PDF", 
-    type=["pdf", "png", "jpg", "jpeg"]
+    "Upload Image, PDF, or Video", 
+    type=["pdf", "png", "jpg", "jpeg", "mp4"]
 )
-
-context_text = ""
-image_base64 = None
-
-if uploaded_file:
-    if uploaded_file.type == "application/pdf":
-        reader = PdfReader(uploaded_file)
-        for page in reader.pages:
-            context_text += page.extract_text()
-        st.sidebar.success("PDF Text Extracted")
-    
-    elif uploaded_file.type in ["image/png", "image/jpeg"]:
-        st.sidebar.image(uploaded_file, caption="Vision Preview")
-        # Convert image to base64 for the AI to "see" it
-        image_base64 = encode_image(uploaded_file)
-        st.sidebar.success("Image Ready for Vision")
-
-# --- MODEL SETTINGS ---
-# Use the Vision model as default
-model = "llama-3.2-11b-vision-preview" 
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# Show Chat History
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- CHAT INPUT ---
-if prompt := st.chat_input("Ask about the image or document..."):
+# --- CHAT LOGIC ---
+if prompt := st.chat_input("Ask about your files..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     if not api_key:
-        st.error("Please add API Key!")
+        st.error("Missing Gemini API Key!")
         st.stop()
 
     try:
-        client = Groq(api_key=api_key)
+        genai.configure(api_key=api_key)
+        # Use Gemini 1.5 Flash (Fast, Free, and High Quality)
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # Prepare the content list for Vision
-        content = [{"type": "text", "text": f"{prompt}\n\nContext: {context_text}"}]
-        
-        # If there is an image, add it to the content list
-        if image_base64:
-            content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{image_base64}",
-                },
-            })
+        content_parts = [prompt]
+
+        # Handle File inputs for Gemini
+        if uploaded_file:
+            if uploaded_file.type == "application/pdf":
+                reader = PdfReader(uploaded_file)
+                text = ""
+                for page in reader.pages:
+                    text += page.extract_text()
+                content_parts.append(f"\nPDF Context: {text}")
+            else:
+                # Images and Videos are handled natively by Gemini!
+                file_data = uploaded_file.getvalue()
+                content_parts.append({
+                    "mime_type": uploaded_file.type,
+                    "data": file_data
+                })
 
         with st.chat_message("assistant"):
-            response = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": content}]
-            )
-            full_response = response.choices[0].message.content
+            response = model.generate_content(content_parts)
+            full_response = response.text
             st.markdown(full_response)
             
         st.session_state.messages.append({"role": "assistant", "content": full_response})

@@ -1,4 +1,3 @@
 streamlit
-groq
-pandas
+google-generativeai
 PyPDF2
